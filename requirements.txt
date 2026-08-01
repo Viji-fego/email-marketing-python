@@ -1,0 +1,9 @@
+fastapi
+uvicorn[standard]
+python-multipart
+openpyxl
+requests
+python-dotenv
+sqlalchemy
+pyjwt
+email-validator
