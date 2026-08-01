@@ -5,5 +5,6 @@ openpyxl
 requests
 python-dotenv
 sqlalchemy
+pymysql
 pyjwt
 email-validator
