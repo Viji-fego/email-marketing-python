@@ -1,3 +1,4 @@
+import logging
 from typing import List
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
@@ -9,6 +10,10 @@ from app.deps import get_current_user
 from app.models import Campaign, CampaignContact, Contact, EmailEvent, User
 from app.services.brevo_service import send_email
 from app.services.excel_service import extract_contacts_from_excel
+from app.services.analytics_service import AnalyticsService
+from app.enums import EmailEventType
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/campaigns", tags=["campaigns"])
 
@@ -133,7 +138,8 @@ async def send_from_excel(
         db.refresh(campaign_contact)
 
         try:
-            send_email(
+            # Send email and capture message ID for tracking
+            message_id = send_email(
                 to_email=contact.email,
                 subject=subject,
                 html_content=body_html,
@@ -141,13 +147,30 @@ async def send_from_excel(
                 cta_text=cta_text,
                 cta_url=cta_url,
             )
+
+            # Store message ID for webhook tracking
+            campaign_contact.provider_message_id = message_id
             campaign_contact.status = "sent"
-            db.add(EmailEvent(campaign_contact_id=campaign_contact.id, event_type="sent"))
+            campaign_contact.sent_at = __import__("datetime").datetime.now(__import__("datetime").timezone.utc)
+
+            # Log event
+            db.add(EmailEvent(
+                campaign_contact_id=campaign_contact.id,
+                provider_message_id=message_id,
+                event_type=EmailEventType.SENT.value,
+                provider="brevo",
+            ))
             sent.append(contact.email)
         except Exception as exc:
             campaign_contact.status = "failed"
-            db.add(EmailEvent(campaign_contact_id=campaign_contact.id, event_type="failed", detail=str(exc)))
+            db.add(EmailEvent(
+                campaign_contact_id=campaign_contact.id,
+                event_type=EmailEventType.FAILED.value,
+                provider="brevo",
+                detail=str(exc),
+            ))
             failed.append({"email": contact.email, "error": str(exc)})
+            logger.error(f"Failed to send email to {contact.email}: {exc}")
 
         db.commit()
 
@@ -158,3 +181,35 @@ async def send_from_excel(
         "failed": len(failed),
         "failures": failed,
     }
+
+
+@router.get("/{campaign_id}/analytics")
+def get_campaign_analytics(
+    campaign_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get campaign performance analytics.
+
+    Returns metrics including:
+    - Total sent, delivered, opened, clicked
+    - Bounce rates, complaint rates, unsubscribe rates
+    - Engagement metrics (open rate, click rate, CTR)
+    """
+    return AnalyticsService.get_campaign_analytics(db, campaign_id)
+
+
+@router.get("/{campaign_id}/events")
+def get_campaign_events(
+    campaign_id: str,
+    event_type: str = None,
+    limit: int = 100,
+    offset: int = 0,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get event breakdown for a campaign.
+
+    Shows count of each event type (sent, delivered, opened, clicked, etc.).
+    """
+    return AnalyticsService.get_event_breakdown(db, campaign_id)

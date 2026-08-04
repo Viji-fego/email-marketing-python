@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -9,6 +10,9 @@ from app.config import settings, get_db
 from app.deps import get_current_user
 from app.models import CampaignContact, EmailEvent, User
 from app.services.brevo_service import send_email
+from app.enums import EmailEventType
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/emails", tags=["emails"])
 
@@ -42,7 +46,8 @@ def send_email_route(
             raise HTTPException(status_code=404, detail="campaignContactId not found.")
 
     try:
-        send_email(
+        # Send email and capture message ID for tracking
+        message_id = send_email(
             to_email=body.to,
             subject=body.subject,
             html_content=body.htmlContent,
@@ -50,17 +55,31 @@ def send_email_route(
             cta_text=body.ctaText,
             cta_url=body.ctaUrl,
         )
+
+        if campaign_contact:
+            # Store message ID for webhook tracking
+            campaign_contact.provider_message_id = message_id
+            campaign_contact.status = "sent"
+            campaign_contact.sent_at = datetime.now(timezone.utc)
+            db.add(EmailEvent(
+                campaign_contact_id=campaign_contact.id,
+                provider_message_id=message_id,
+                event_type=EmailEventType.SENT.value,
+                provider="brevo",
+            ))
+            db.commit()
+
     except Exception as exc:
         if campaign_contact:
             campaign_contact.status = "failed"
-            db.add(EmailEvent(campaign_contact_id=campaign_contact.id, event_type="failed", detail=str(exc)))
+            db.add(EmailEvent(
+                campaign_contact_id=campaign_contact.id,
+                event_type=EmailEventType.FAILED.value,
+                provider="brevo",
+                detail=str(exc),
+            ))
             db.commit()
+        logger.error(f"Failed to send email to {body.to}: {exc}")
         raise HTTPException(status_code=502, detail=f"Brevo rejected the email: {exc}")
 
-    if campaign_contact:
-        campaign_contact.status = "sent"
-        campaign_contact.sent_at = datetime.now(timezone.utc)
-        db.add(EmailEvent(campaign_contact_id=campaign_contact.id, event_type="sent"))
-        db.commit()
-
-    return {"success": True, "to": body.to}
+    return {"success": True, "to": body.to, "messageId": message_id if campaign_contact else None}

@@ -26,14 +26,26 @@ def send_email(
     text_content: Optional[str] = None,
     cta_text: Optional[str] = None,
     cta_url: Optional[str] = None,
-) -> None:
+) -> str:
     """Send a single email through Brevo's transactional email API.
 
     The "from" address is always settings.BREVO_SENDER_EMAIL — it must be
     a sender that is already verified in the Brevo account, or Brevo will
     reject the request.
 
-    Raises requests.HTTPError if Brevo rejects the request.
+    Args:
+        to_email: Recipient email address
+        subject: Email subject
+        html_content: HTML content
+        text_content: Plain text content (optional)
+        cta_text: Call-to-action button text (optional)
+        cta_url: Call-to-action button URL (optional)
+
+    Returns:
+        str: Brevo message ID for tracking
+
+    Raises:
+        requests.HTTPError if Brevo rejects the request.
     """
     payload = {
         "sender": {
@@ -54,3 +66,12 @@ def send_email(
     }
     response = requests.post(BREVO_SEND_URL, json=payload, headers=headers, timeout=15)
     response.raise_for_status()
+
+    # Extract and return message ID for webhook tracking
+    response_data = response.json()
+    message_id = response_data.get("messageId")
+
+    if not message_id:
+        raise ValueError("Brevo response missing messageId")
+
+    return message_id
