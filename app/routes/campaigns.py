@@ -4,8 +4,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.config import settings
-from app.database import get_db
+from app.config import settings, get_db
 from app.deps import get_current_user
 from app.models import Campaign, CampaignContact, Contact, EmailEvent, User
 from app.services.brevo_service import send_email

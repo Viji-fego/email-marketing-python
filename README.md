@@ -22,6 +22,26 @@ Edit `.env`:
 - `JWT_SECRET` — set this to a long random string (used to sign login tokens)
 - `DATABASE_URL` — defaults to a local SQLite file (`app.db`), no separate database server needed
 
+## Database Migrations
+
+Run migrations before starting the server:
+
+```bash
+alembic upgrade head
+```
+
+To create a new migration after modifying models:
+
+```bash
+alembic revision --autogenerate -m "Description of change"
+```
+
+Then review the generated migration file in `alembic/versions/` and run:
+
+```bash
+alembic upgrade head
+```
+
 ## Run
 
 ```bash
@@ -29,8 +49,6 @@ uvicorn app.main:app --reload --port 8001
 ```
 
 Interactive API docs: http://localhost:8001/docs
-
-Tables are created automatically on first run (`app.db` in this folder).
 
 ## Typical flow
 

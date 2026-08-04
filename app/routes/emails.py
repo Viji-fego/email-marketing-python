@@ -5,8 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
 
-from app.config import settings
-from app.database import get_db
+from app.config import settings, get_db
 from app.deps import get_current_user
 from app.models import CampaignContact, EmailEvent, User
 from app.services.brevo_service import send_email

@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
 
-from app.database import get_db
+from app.config import get_db
 from app.deps import get_current_user
 from app.models import Contact, User
 
