@@ -15,7 +15,7 @@ from app.enums import EmailEventType
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/campaigns", tags=["campaigns"])
+router = APIRouter(prefix="/campaigns", tags=["campaigns"])
 
 
 class CreateCampaignRequest(BaseModel):

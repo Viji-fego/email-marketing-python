@@ -6,7 +6,7 @@ from app.config import get_db
 from app.models import User
 from app.security import create_access_token, hash_password, verify_password
 
-router = APIRouter(prefix="/api/auth", tags=["auth"])
+router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 class RegisterRequest(BaseModel):

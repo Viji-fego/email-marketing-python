@@ -12,7 +12,11 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 
-app = FastAPI(title="University Outreach — Python API", version="0.2.0")
+app = FastAPI(
+    title="University Outreach — Python API",
+    version="0.2.0",
+    root_path="/api"
+)
 
 # Enable SQLAlchemy debugging
 setup_sqlalchemy_listeners()

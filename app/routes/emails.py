@@ -14,7 +14,7 @@ from app.enums import EmailEventType
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/emails", tags=["emails"])
+router = APIRouter(prefix="/emails", tags=["emails"])
 
 
 class SendEmailRequest(BaseModel):
