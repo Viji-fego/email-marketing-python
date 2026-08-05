@@ -48,21 +48,24 @@ class WebhookService:
                     },
                 )
 
-            # Step 2: Find campaign_contact by message ID
+            # Step 2: Find campaign_contact (by ID tag first, then message ID fallback)
             campaign_contact = TrackingService.find_campaign_contact(
-                db, internal_event.provider_message_id
+                db,
+                provider_message_id=internal_event.provider_message_id,
+                campaign_contact_id=internal_event.campaign_contact_id,
             )
 
             if not campaign_contact:
+                lookup_key = internal_event.campaign_contact_id or internal_event.provider_message_id
                 logger.warning(
-                    "Campaign contact not found for message ID: %s",
-                    internal_event.provider_message_id,
+                    "Campaign contact not found for lookup key: %s",
+                    lookup_key,
                 )
                 return (
                     True,  # Still return success (200 OK) to Brevo
                     {
                         "status": "not_found",
-                        "reason": f"Campaign contact not found for {internal_event.provider_message_id}",
+                        "reason": f"Campaign contact not found for {lookup_key}",
                     },
                 )
 
@@ -125,21 +128,24 @@ class WebhookService:
                     },
                 )
 
-            # Step 2: Find campaign_contact by message ID
+            # Step 2: Find campaign_contact (by ID tag first, then message ID fallback)
             campaign_contact = TrackingService.find_campaign_contact(
-                db, internal_event.provider_message_id
+                db,
+                provider_message_id=internal_event.provider_message_id,
+                campaign_contact_id=internal_event.campaign_contact_id,
             )
 
             if not campaign_contact:
+                lookup_key = internal_event.campaign_contact_id or internal_event.provider_message_id
                 logger.warning(
-                    "Campaign contact not found for message ID: %s",
-                    internal_event.provider_message_id,
+                    "Campaign contact not found for lookup key: %s",
+                    lookup_key,
                 )
                 return (
                     True,
                     {
                         "status": "not_found",
-                        "reason": f"Campaign contact not found for {internal_event.provider_message_id}",
+                        "reason": f"Campaign contact not found for {lookup_key}",
                     },
                 )
 

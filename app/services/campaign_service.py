@@ -94,7 +94,7 @@ class CampaignService:
                     db.commit()
                     db.refresh(campaign_contact)
 
-                # Send email via Brevo
+                # Send email via Brevo with campaign_contact_id for reliable webhook matching
                 message_id = send_email(
                     to_email=contact.email,
                     subject=subject,
@@ -102,6 +102,7 @@ class CampaignService:
                     text_content=body_text,
                     cta_text=cta_text,
                     cta_url=cta_url,
+                    campaign_contact_id=campaign_contact.id,
                 )
 
                 # Update campaign contact tracking

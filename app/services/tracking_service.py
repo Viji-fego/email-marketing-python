@@ -27,28 +27,50 @@ class TrackingService:
 
     @staticmethod
     def find_campaign_contact(
-        db: Session, provider_message_id: str
+        db: Session,
+        provider_message_id: str,
+        campaign_contact_id: Optional[str] = None,
     ) -> Optional[CampaignContact]:
         """
-        Find CampaignContact by provider message ID.
+        Find CampaignContact by primary key (campaign_contact_id) or fallback to message ID.
+
+        Lookup strategy:
+        1. If campaign_contact_id is provided (from webhook tag), use it directly (most reliable)
+        2. If not provided, fall back to message_id lookup (for backward compatibility)
 
         Args:
             db: Database session
-            provider_message_id: Message ID from email provider
+            provider_message_id: Message ID from email provider (fallback)
+            campaign_contact_id: Internal campaign_contact UUID (primary, if available)
 
         Returns:
             CampaignContact or None if not found
         """
         try:
-            logger.info("🔍 Finding campaign_contact by message_id: %s", provider_message_id)
+            # Primary lookup: by campaign_contact_id (from webhook tag)
+            if campaign_contact_id:
+                logger.info("🔍 Finding campaign_contact by ID (from tag): %s", campaign_contact_id)
+                contact = db.query(CampaignContact).filter_by(id=campaign_contact_id).first()
+                if contact:
+                    logger.info("✅ Found campaign_contact by ID: ID=%s, Status=%s", contact.id, contact.status)
+                    return contact
+                else:
+                    logger.warning("❌ Campaign contact NOT found by ID: %s", campaign_contact_id)
+                    # Don't fall back to message_id if ID was provided but not found
+                    # (indicates a data mismatch or webhook tampering)
+                    return None
+
+            # Fallback: by message_id (for emails sent before tag support was added)
+            logger.info("🔍 Finding campaign_contact by message_id (fallback): %s", provider_message_id)
             contact = db.query(CampaignContact).filter_by(
                 provider_message_id=provider_message_id
             ).first()
             if contact:
-                logger.info("✅ Found campaign_contact: ID=%s, Status=%s", contact.id, contact.status)
+                logger.info("✅ Found campaign_contact by message_id: ID=%s, Status=%s", contact.id, contact.status)
             else:
                 logger.warning("❌ Campaign contact NOT found for message_id: %s", provider_message_id)
             return contact
+
         except SQLAlchemyError as e:
             logger.error("❌ Database error finding campaign_contact: %s", e)
             return None

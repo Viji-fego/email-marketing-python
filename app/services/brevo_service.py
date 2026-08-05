@@ -30,6 +30,7 @@ def send_email(
     text_content: Optional[str] = None,
     cta_text: Optional[str] = None,
     cta_url: Optional[str] = None,
+    campaign_contact_id: Optional[str] = None,
 ) -> str:
     """Send a single email through Brevo's transactional email API.
 
@@ -44,9 +45,10 @@ def send_email(
         text_content: Plain text content (optional)
         cta_text: Call-to-action button text (optional)
         cta_url: Call-to-action button URL (optional)
+        campaign_contact_id: Internal campaign_contact UUID for reliable webhook matching (optional)
 
     Returns:
-        str: Brevo message ID for tracking
+        str: Brevo message ID for tracking (SMTP format, for reference only)
 
     Raises:
         requests.HTTPError if Brevo rejects the request.
@@ -63,20 +65,33 @@ def send_email(
     if text_content:
         payload["textContent"] = text_content
 
+    # Add campaign_contact_id as tag so Brevo echoes it back on all webhooks
+    # This is the primary lookup key for webhook matching (more reliable than message-id)
+    if campaign_contact_id:
+        payload["tags"] = [campaign_contact_id]
+        logger.info(f"📌 Added tag to email: {campaign_contact_id}")
+
     headers = {
         "accept": "application/json",
         "api-key": settings.BREVO_API_KEY,
         "content-type": "application/json",
     }
+
+    # Add custom header for additional tracking (echoed back in some webhook events)
+    if campaign_contact_id:
+        headers["X-Mailin-custom"] = campaign_contact_id
+        logger.info(f"📌 Added custom header to email: {campaign_contact_id}")
+
     response = requests.post(BREVO_SEND_URL, json=payload, headers=headers, timeout=15)
     response.raise_for_status()
 
-    # Extract and return message ID for webhook tracking
+    # Extract message ID for audit trail (not primary lookup key anymore)
     response_data = response.json()
 
     logger.info(f"📧 BREVO RESPONSE: {json.dumps(response_data, indent=2)}")
 
-    # Brevo returns messageId in format: an#XXXXX (this is what webhooks use)
+    # Brevo returns messageId (SMTP format, for reference only)
+    # Primary lookup is now by campaign_contact_id tag
     message_id = response_data.get("messageId")
 
     if not message_id:
@@ -84,4 +99,5 @@ def send_email(
         raise ValueError("Brevo response missing messageId")
 
     logger.info(f"✅ Brevo messageId extracted: {message_id}")
+    logger.info(f"📌 Campaign contact ID: {campaign_contact_id} (primary lookup key)")
     return message_id

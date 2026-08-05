@@ -26,6 +26,7 @@ class InternalEvent:
         provider: str = "brevo",
         payload: Optional[Dict[str, Any]] = None,
         email: Optional[str] = None,
+        campaign_contact_id: Optional[str] = None,
     ):
         self.event_type = event_type
         self.provider_message_id = provider_message_id
@@ -33,6 +34,7 @@ class InternalEvent:
         self.provider = provider
         self.payload = payload or {}
         self.email = email
+        self.campaign_contact_id = campaign_contact_id
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for logging/debugging."""
@@ -42,6 +44,7 @@ class InternalEvent:
             "timestamp": self.timestamp.isoformat(),
             "provider": self.provider,
             "email": self.email,
+            "campaign_contact_id": self.campaign_contact_id,
         }
 
 
@@ -82,10 +85,12 @@ class EventProcessor:
                 return None
 
             # Map Brevo event to internal event type
+            # Note: unique_opened is Brevo's event for first-time opens (distinct from repeated opens)
             event_type_map = {
                 "sent": EmailEventType.SENT,
                 "delivered": EmailEventType.DELIVERED,
                 "opened": EmailEventType.OPENED,
+                "unique_opened": EmailEventType.OPENED,  # First-time open
                 "click": EmailEventType.CLICKED,
                 "hard_bounce": EmailEventType.HARD_BOUNCE,
                 "soft_bounce": EmailEventType.SOFT_BOUNCE,
@@ -94,6 +99,7 @@ class EventProcessor:
                 "deferred": EmailEventType.DEFERRED,
                 "blocked": EmailEventType.BLOCKED,
                 "reply": EmailEventType.REPLIED,
+                "invalid_email": EmailEventType.HARD_BOUNCE,
             }
 
             event_type = event_type_map.get(event)
@@ -108,6 +114,14 @@ class EventProcessor:
             else:
                 timestamp = datetime.now(timezone.utc)
 
+            # Extract campaign_contact_id from tags (primary lookup key)
+            # Tags are sent as a list; our tag is the campaign_contact_id
+            campaign_contact_id = None
+            tags = payload.get("tags")
+            if tags and isinstance(tags, list) and len(tags) > 0:
+                campaign_contact_id = tags[0]
+                logger.info(f"📌 Extracted campaign_contact_id from tags: {campaign_contact_id}")
+
             return InternalEvent(
                 event_type=event_type,
                 provider_message_id=message_id,
@@ -115,6 +129,7 @@ class EventProcessor:
                 provider="brevo",
                 payload=payload,
                 email=payload.get("email"),
+                campaign_contact_id=campaign_contact_id,
             )
 
         except Exception as e:
