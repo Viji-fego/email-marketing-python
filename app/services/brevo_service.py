@@ -1,8 +1,12 @@
 from typing import Optional
+import logging
+import json
 
 import requests
 
 from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 BREVO_SEND_URL = "https://api.brevo.com/v3/smtp/email"
 
@@ -69,9 +73,15 @@ def send_email(
 
     # Extract and return message ID for webhook tracking
     response_data = response.json()
+
+    logger.info(f"📧 BREVO RESPONSE: {json.dumps(response_data, indent=2)}")
+
+    # Brevo returns messageId in format: an#XXXXX (this is what webhooks use)
     message_id = response_data.get("messageId")
 
     if not message_id:
+        logger.error(f"❌ Brevo response missing messageId. Full response: {response_data}")
         raise ValueError("Brevo response missing messageId")
 
+    logger.info(f"✅ Brevo messageId extracted: {message_id}")
     return message_id
