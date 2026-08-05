@@ -1,4 +1,4 @@
-from sqlalchemy import Column, DateTime, ForeignKey, String, Index
+from sqlalchemy import Column, DateTime, ForeignKey, String, Index, Enum
 from sqlalchemy.orm import relationship
 
 from app.models.base import Base, gen_uuid, utcnow
@@ -24,6 +24,7 @@ class CampaignContact(Base):
 
     created_at = Column(DateTime, default=utcnow)
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+    is_active = Column(Enum('1', '0'), default='1', nullable=False)
 
     campaign = relationship("Campaign")
     contact = relationship("Contact")

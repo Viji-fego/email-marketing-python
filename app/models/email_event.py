@@ -1,4 +1,4 @@
-from sqlalchemy import Column, DateTime, ForeignKey, String, Text, JSON, Index
+from sqlalchemy import Column, DateTime, ForeignKey, String, Text, JSON, Index, Enum
 
 from app.models.base import Base, gen_uuid, utcnow
 
@@ -14,6 +14,8 @@ class EmailEvent(Base):
     payload = Column(JSON, nullable=True)
     detail = Column(Text, nullable=True)
     created_at = Column(DateTime, default=utcnow, index=True)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+    is_active = Column(Enum('1', '0'), default='1', nullable=False)
 
     __table_args__ = (
         Index('idx_event_type_created', 'event_type', 'created_at'),

@@ -2,7 +2,7 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routes import auth, campaigns, contacts, emails, webhooks
+from app.routes import auth, campaigns, contact_lists, contacts, emails, webhooks
 from app.debug_webhook import setup_sqlalchemy_listeners, enable_sql_echo
 from app.config import engine
 
@@ -32,6 +32,7 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(contacts.router)
 app.include_router(campaigns.router)
+app.include_router(contact_lists.router)
 app.include_router(emails.router)
 app.include_router(webhooks.router)
 

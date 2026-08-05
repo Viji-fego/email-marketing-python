@@ -1,5 +1,5 @@
 import logging
-from typing import List
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
@@ -11,6 +11,7 @@ from app.models import Campaign, CampaignContact, Contact, EmailEvent, User
 from app.services.brevo_service import send_email
 from app.services.excel_service import extract_contacts_from_excel
 from app.services.analytics_service import AnalyticsService
+from app.services.campaign_service import CampaignService
 from app.enums import EmailEventType
 
 logger = logging.getLogger(__name__)
@@ -20,6 +21,19 @@ router = APIRouter(prefix="/campaigns", tags=["campaigns"])
 
 class CreateCampaignRequest(BaseModel):
     name: str
+    contact_list_id: Optional[str] = None
+
+
+class SelectContactListRequest(BaseModel):
+    contact_list_id: str
+
+
+class RunCampaignRequest(BaseModel):
+    subject: str
+    bodyHtml: str
+    bodyText: Optional[str] = None
+    ctaText: Optional[str] = None
+    ctaUrl: Optional[str] = None
 
 
 @router.post("")
@@ -28,11 +42,15 @@ def create_campaign(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    campaign = Campaign(name=body.name)
-    db.add(campaign)
-    db.commit()
-    db.refresh(campaign)
-    return {"id": campaign.id, "name": campaign.name, "status": campaign.status}
+    """Create a new campaign with optional contact list selection."""
+    campaign = CampaignService.create_campaign(db, body.name, body.contact_list_id)
+    return {
+        "id": campaign.id,
+        "name": campaign.name,
+        "status": campaign.status,
+        "contactListId": campaign.contact_list_id,
+        "createdAt": campaign.created_at.isoformat(),
+    }
 
 
 class EnrollRequest(BaseModel):
@@ -73,6 +91,59 @@ def enroll_contacts(
         "enrolled": len(results),
         "campaignContacts": [{"id": cc.id, "contactId": cc.contact_id, "status": cc.status} for cc in results],
     }
+
+
+@router.put("/{campaign_id}/select-contact-list")
+def select_contact_list(
+    campaign_id: str,
+    body: SelectContactListRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Select a contact list for the campaign."""
+    campaign = CampaignService.get_campaign(db, campaign_id)
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found.")
+
+    campaign = CampaignService.update_campaign_contact_list(db, campaign, body.contact_list_id)
+    return {
+        "id": campaign.id,
+        "name": campaign.name,
+        "status": campaign.status,
+        "contactListId": campaign.contact_list_id,
+        "message": "Contact list selected for campaign.",
+    }
+
+
+@router.post("/{campaign_id}/run")
+def run_campaign(
+    campaign_id: str,
+    body: RunCampaignRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Run a campaign: send emails to all contacts in the selected contact list."""
+    _require_brevo_configured()
+
+    campaign = CampaignService.get_campaign(db, campaign_id)
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found.")
+
+    try:
+        result = CampaignService.run_campaign(
+            db, campaign,
+            subject=body.subject,
+            body_html=body.bodyHtml,
+            body_text=body.bodyText,
+            cta_text=body.ctaText,
+            cta_url=body.ctaUrl,
+        )
+        return result
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        logger.error(f"Campaign run failed: {exc}")
+        raise HTTPException(status_code=500, detail="Failed to run campaign.")
 
 
 def _require_brevo_configured():
