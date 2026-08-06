@@ -127,7 +127,9 @@ def run_campaign(
 
     campaign = CampaignService.get_campaign(db, campaign_id)
     if not campaign:
+        logger.error(f"STEP 2: Campaign Retrieval - Campaign {campaign_id} not found")
         raise HTTPException(status_code=404, detail="Campaign not found.")
+    logger.info(f"STEP 2: Campaign Retrieval - Campaign {campaign_id} retrieved successfully")
 
     try:
         result = CampaignService.run_campaign(
@@ -148,10 +150,12 @@ def run_campaign(
 
 def _require_brevo_configured():
     if not settings.BREVO_API_KEY or not settings.BREVO_SENDER_EMAIL:
+        logger.error("STEP 1: Brevo Configuration Check - Missing BREVO_API_KEY or BREVO_SENDER_EMAIL")
         raise HTTPException(
             status_code=500,
             detail="Brevo is not configured. Set BREVO_API_KEY and BREVO_SENDER_EMAIL in .env.",
         )
+    logger.info("STEP 1: Brevo Configuration Check - Brevo is properly configured")
 
 
 @router.post("/send-from-excel")
