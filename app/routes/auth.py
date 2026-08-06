@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_db
 from app.models import User
+from app.models.base import iso_utc
 from app.security import create_access_token, hash_password, verify_password
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -20,7 +21,15 @@ class LoginRequest(BaseModel):
 
 
 def _user_response(user: User, token: str) -> dict:
-    return {"accessToken": token, "user": {"id": user.id, "email": user.email}}
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "user": {
+            "id": user.id,
+            "email": user.email,
+            "createdAt": iso_utc(user.created_at),
+        },
+    }
 
 
 @router.post("/register")

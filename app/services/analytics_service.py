@@ -11,6 +11,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models import CampaignContact, EmailEvent, Campaign
+from app.models.base import iso_utc
 from app.enums import EmailEventType
 
 logger = logging.getLogger(__name__)
@@ -176,18 +177,18 @@ class AnalyticsService:
                     "campaign_name": campaign.name if campaign else "Unknown",
                     "email_id": cc.id,
                     "status": cc.status,
-                    "sent_at": cc.sent_at.isoformat() if cc.sent_at else None,
-                    "delivered_at": cc.delivered_at.isoformat() if cc.delivered_at else None,
-                    "opened_at": cc.opened_at.isoformat() if cc.opened_at else None,
-                    "clicked_at": cc.clicked_at.isoformat() if cc.clicked_at else None,
-                    "bounced_at": cc.bounced_at.isoformat() if cc.bounced_at else None,
-                    "unsubscribed_at": cc.unsubscribed_at.isoformat() if cc.unsubscribed_at else None,
+                    "sent_at": iso_utc(cc.sent_at),
+                    "delivered_at": iso_utc(cc.delivered_at),
+                    "opened_at": iso_utc(cc.opened_at),
+                    "clicked_at": iso_utc(cc.clicked_at),
+                    "bounced_at": iso_utc(cc.bounced_at),
+                    "unsubscribed_at": iso_utc(cc.unsubscribed_at),
                     "last_event": cc.last_event,
-                    "last_event_at": cc.last_event_at.isoformat() if cc.last_event_at else None,
+                    "last_event_at": iso_utc(cc.last_event_at),
                     "events": [
                         {
                             "event_type": e.event_type,
-                            "timestamp": e.created_at.isoformat(),
+                            "timestamp": iso_utc(e.created_at),
                             "provider": e.provider,
                         }
                         for e in events

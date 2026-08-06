@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.config import settings, get_db
 from app.deps import get_current_user
 from app.models import Campaign, CampaignContact, Contact, EmailEvent, User
+from app.models.base import iso_utc
 from app.services.brevo_service import send_email
 from app.services.excel_service import extract_contacts_from_excel
 from app.services.analytics_service import AnalyticsService
@@ -50,6 +51,89 @@ def create_campaign(
         "status": campaign.status,
         "contactListId": campaign.contact_list_id,
         "createdAt": campaign.created_at.isoformat(),
+    }
+
+
+@router.get("")
+def list_campaigns(
+    page: int = 1,
+    page_size: int = 10,
+    search: str = "",
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """List campaigns with recipient/open/click/unsubscribe counts for the card list UI."""
+    query = db.query(Campaign)
+    if search:
+        query = query.filter(Campaign.name.ilike(f"%{search}%"))
+
+    total = query.count()
+    campaigns = (
+        query.order_by(Campaign.created_at.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+        .all()
+    )
+
+    items = []
+    for campaign in campaigns:
+        contacts = db.query(CampaignContact).filter_by(campaign_id=campaign.id).all()
+        items.append({
+            "id": campaign.id,
+            "name": campaign.name,
+            "status": campaign.status,
+            "contactListId": campaign.contact_list_id,
+            "contactListName": campaign.contact_list.name if campaign.contact_list else None,
+            "contactCount": len(contacts),
+            "sentCount": sum(1 for c in contacts if c.status == "sent"),
+            "openedCount": sum(1 for c in contacts if c.opened_at),
+            "clickedCount": sum(1 for c in contacts if c.clicked_at),
+            "unsubscribedCount": sum(1 for c in contacts if c.status == "unsubscribed"),
+            "createdAt": iso_utc(campaign.created_at),
+        })
+
+    pages = (total + page_size - 1) // page_size if page_size else 0
+    return {"items": items, "total": total, "page": page, "page_size": page_size, "pages": pages}
+
+
+@router.get("/{campaign_id}")
+def get_campaign(
+    campaign_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Campaign detail: summary + the full list of enrolled contacts with their delivery status."""
+    campaign = db.get(Campaign, campaign_id)
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found.")
+
+    campaign_contacts = db.query(CampaignContact).filter_by(campaign_id=campaign_id).all()
+    contacts = []
+    for cc in campaign_contacts:
+        contact = db.get(Contact, cc.contact_id)
+        if not contact:
+            continue
+        contacts.append({
+            "id": contact.id,
+            "name": contact.name,
+            "email": contact.email,
+            "university": contact.university,
+            "status": cc.status,
+            "sentAt": iso_utc(cc.sent_at),
+            "openedAt": iso_utc(cc.opened_at),
+            "clickedAt": iso_utc(cc.clicked_at),
+        })
+
+    return {
+        "id": campaign.id,
+        "name": campaign.name,
+        "status": campaign.status,
+        "contactListId": campaign.contact_list_id,
+        "contactListName": campaign.contact_list.name if campaign.contact_list else None,
+        "contactCount": len(contacts),
+        "sentCount": sum(1 for c in contacts if c["status"] == "sent"),
+        "createdAt": iso_utc(campaign.created_at),
+        "contacts": contacts,
     }
 
 

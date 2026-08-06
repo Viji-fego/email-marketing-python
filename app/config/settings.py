@@ -6,6 +6,7 @@ All settings are centralized here for easy management.
 """
 
 import os
+from urllib.parse import quote_plus
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -44,9 +45,15 @@ class Settings:
 
         Format: driver://user:password@host:port/database
         Example: mysql+pymysql://root@127.0.0.1:3306/email_marketing_python
+
+        User and password are percent-encoded so that reserved URL
+        characters (@, :, /, %, ...) in either one don't get misread as
+        part of the host — e.g. a password like "K4d4p@kk4m" would
+        otherwise truncate at the "@" and break the connection.
         """
-        password_part = f":{self.DB_PASSWORD}" if self.DB_PASSWORD else ""
-        return f"{self.DB_DRIVER}://{self.DB_USER}{password_part}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
+        user_part = quote_plus(self.DB_USER)
+        password_part = f":{quote_plus(self.DB_PASSWORD)}" if self.DB_PASSWORD else ""
+        return f"{self.DB_DRIVER}://{user_part}{password_part}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
 
     # ============================================================================
     # JWT (Authentication)
