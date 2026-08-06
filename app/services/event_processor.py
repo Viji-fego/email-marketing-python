@@ -77,11 +77,14 @@ class EventProcessor:
         - deferred (status=5)
         """
         try:
+            logger.info("STEP 1: Normalizing Brevo event...")
             event = payload.get("event", "").lower()
             message_id = payload.get("message-id")
+            logger.info("  Event type: %s", event)
+            logger.info("  Message ID: %s", message_id)
 
             if not message_id:
-                logger.warning("Brevo event missing message-id: %s", payload)
+                logger.warning("✗ Event missing message-id: %s", payload)
                 return None
 
             # Map Brevo event to internal event type
@@ -104,8 +107,10 @@ class EventProcessor:
 
             event_type = event_type_map.get(event)
             if not event_type:
-                logger.warning("Unknown Brevo event type: %s", event)
+                # Silently ignore unknown event types like "request"
                 return None
+
+            logger.info("  ✓ Event type mapped: %s", event_type.value)
 
             # Extract timestamp (prefer ts_event, fallback to ts_smtp, then current time)
             timestamp_unix = payload.get("ts_event") or payload.get("ts_smtp") or payload.get("date")
@@ -120,7 +125,9 @@ class EventProcessor:
             tags = payload.get("tags")
             if tags and isinstance(tags, list) and len(tags) > 0:
                 campaign_contact_id = tags[0]
-                logger.info(f"📌 Extracted campaign_contact_id from tags: {campaign_contact_id}")
+                logger.info("  📌 Campaign contact ID from tags: %s", campaign_contact_id)
+
+            logger.info("✓ STEP 1: Event normalized successfully")
 
             return InternalEvent(
                 event_type=event_type,

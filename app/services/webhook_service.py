@@ -49,6 +49,7 @@ class WebhookService:
             if not campaign_contact:
                 return True, {"status": "not_found", "reason": "Campaign contact not found"}
 
+            logger.info("→ STEP 3: Starting event processing for contact=%s", campaign_contact.id)
             success = TrackingService.process_event(db, campaign_contact, internal_event)
 
             if success:

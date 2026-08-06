@@ -47,19 +47,24 @@ class TrackingService:
             CampaignContact or None if not found
         """
         try:
+            logger.info("STEP 2: Searching campaign contact...")
             if campaign_contact_id:
+                logger.info("  Lookup by id: %s", campaign_contact_id)
                 contact = db.query(CampaignContact).filter_by(id=campaign_contact_id).first()
                 if not contact:
                     logger.warning("✗ Contact not found by id=%s", campaign_contact_id)
                     return None
+                logger.info("  ✓ Found by id: %s", contact.id)
                 return contact
 
+            logger.info("  Lookup by msgid: %s", provider_message_id)
             contact = db.query(CampaignContact).filter_by(
                 provider_message_id=provider_message_id
             ).first()
             if not contact:
                 logger.warning("✗ Contact not found by msgid=%s", provider_message_id)
                 return None
+            logger.info("  ✓ Found by msgid: %s", contact.id)
             return contact
 
         except SQLAlchemyError as e:
