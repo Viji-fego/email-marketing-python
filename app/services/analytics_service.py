@@ -52,9 +52,11 @@ class AnalyticsService:
                     "campaign_name": campaign.name,
                     "metrics": {
                         "total_sent": 0,
+                        "total_failed": 0,
                         "total_delivered": 0,
                         "total_opened": 0,
-                        "total_opened_raw": 0,
+                        "total_open_events": 0,
+                        "total_open_events_raw": 0,
                         "prefetch_detected": 0,
                         "bot_scan_detected": 0,
                         "total_clicked": 0,
@@ -66,7 +68,6 @@ class AnalyticsService:
                         "total_replied": 0,
                         "delivery_rate": 0.0,
                         "open_rate": 0.0,
-                        "open_rate_raw": 0.0,
                         "click_rate": 0.0,
                         "ctr": 0.0,
                         "bounce_rate": 0.0,
@@ -80,9 +81,16 @@ class AnalyticsService:
 
             # Count by snapshot fields (latest state)
             delivered = sum(1 for cc in campaign_contacts if cc.delivered_at)
+            failed = sum(1 for cc in campaign_contacts if cc.status == "failed")
 
-            # Count opens by confidence level from email_events
-            opened_genuine = db.query(func.count(EmailEvent.id)).join(
+            # Count UNIQUE contacts who opened (those with opened_at set)
+            opened_genuine = sum(1 for cc in campaign_contacts if cc.opened_at)
+
+            # Count UNIQUE contacts who clicked (those with clicked_at set)
+            clicked = sum(1 for cc in campaign_contacts if cc.clicked_at)
+
+            # Count total open/click EVENTS from email_events (for reference)
+            open_events_genuine = db.query(func.count(EmailEvent.id)).join(
                 CampaignContact,
                 EmailEvent.campaign_contact_id == CampaignContact.id,
             ).filter(
@@ -91,7 +99,7 @@ class AnalyticsService:
                 CampaignContact.campaign_id == campaign_id,
             ).scalar() or 0
 
-            opened_raw = db.query(func.count(EmailEvent.id)).join(
+            open_events_raw = db.query(func.count(EmailEvent.id)).join(
                 CampaignContact,
                 EmailEvent.campaign_contact_id == CampaignContact.id,
             ).filter(
@@ -115,7 +123,6 @@ class AnalyticsService:
                 CampaignContact.campaign_id == campaign_id,
             ).scalar() or 0
 
-            clicked = sum(1 for cc in campaign_contacts if cc.clicked_at)
             bounced = sum(
                 1
                 for cc in campaign_contacts
@@ -135,10 +142,9 @@ class AnalyticsService:
                 CampaignContact.campaign_id == campaign_id,
             ).scalar() or 0
 
-            # Calculate rates (using genuine opens for adjusted metrics)
+            # Calculate rates (using unique counts)
             delivery_rate = (delivered / total * 100) if total > 0 else 0.0
             open_rate = (opened_genuine / delivered * 100) if delivered > 0 else 0.0
-            open_rate_raw = (opened_raw / delivered * 100) if delivered > 0 else 0.0
             click_rate = (clicked / opened_genuine * 100) if opened_genuine > 0 else 0.0
             ctr = (clicked / delivered * 100) if delivered > 0 else 0.0
             bounce_rate = (bounced / total * 100) if total > 0 else 0.0
@@ -151,9 +157,11 @@ class AnalyticsService:
                 "campaign_name": campaign.name,
                 "metrics": {
                     "total_sent": total,
+                    "total_failed": failed,
                     "total_delivered": delivered,
                     "total_opened": opened_genuine,
-                    "total_opened_raw": opened_raw,
+                    "total_open_events": open_events_genuine,
+                    "total_open_events_raw": open_events_raw,
                     "prefetch_detected": prefetch_detected,
                     "bot_scan_detected": bot_scan_detected,
                     "total_clicked": clicked,
@@ -169,7 +177,6 @@ class AnalyticsService:
                     "total_replied": replied,
                     "delivery_rate": round(delivery_rate, 2),
                     "open_rate": round(open_rate, 2),
-                    "open_rate_raw": round(open_rate_raw, 2),
                     "click_rate": round(click_rate, 2),
                     "ctr": round(ctr, 2),
                     "bounce_rate": round(bounce_rate, 2),
