@@ -7,12 +7,102 @@ the application to provider-specific formats.
 """
 
 import logging
+import re
 from typing import Optional, Dict, Any
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 from app.enums import EmailEventType
 
 logger = logging.getLogger(__name__)
+
+
+def is_stale_user_agent(user_agent: str) -> bool:
+    """
+    Detect if user-agent contains a Chrome/Safari/Firefox version > 18 months old.
+    Real browsers auto-update; stale versions signal automation.
+    """
+    if not user_agent:
+        return False
+
+    # Chrome version check (stale if < 90, roughly from 2021)
+    chrome_match = re.search(r'Chrome/(\d+)', user_agent)
+    if chrome_match:
+        try:
+            version = int(chrome_match.group(1))
+            if version < 90:
+                return True
+        except (ValueError, IndexError):
+            pass
+
+    return False
+
+
+def has_scanner_pattern(user_agent: str) -> bool:
+    """
+    Detect known scanner/proxy patterns in user-agent.
+    """
+    if not user_agent:
+        return False
+
+    scanner_patterns = [
+        r'bot(?!tleneck)',  # bot but not bottleneck
+        r'crawler',
+        r'spider',
+        r'scrapybot',
+        r'curl',
+        r'wget',
+        r'python-requests',
+        r'prefetch',
+        r'facebookexternalhit',
+    ]
+
+    ua_lower = user_agent.lower()
+    return any(re.search(pattern, ua_lower) for pattern in scanner_patterns)
+
+
+def classify_open_event(
+    payload: dict,
+    campaign_contact,
+    prefetch_threshold_seconds: int = 10
+) -> str:
+    """
+    Classify open event as genuine, likely_prefetch, or likely_bot_scan.
+
+    Args:
+        payload: Webhook payload from Brevo
+        campaign_contact: CampaignContact model instance
+        prefetch_threshold_seconds: Time in seconds; opens faster than this
+                                     are flagged as likely prefetch
+
+    Returns:
+        "genuine" | "likely_prefetch" | "likely_bot_scan"
+    """
+    # Extract event timestamp
+    timestamp_unix = payload.get("ts_event") or payload.get("ts_smtp")
+    if timestamp_unix:
+        timestamp = datetime.fromtimestamp(int(timestamp_unix), tz=timezone.utc)
+    else:
+        timestamp = datetime.now(timezone.utc)
+
+    # Check 1: Timing (prefetch signal)
+    if campaign_contact.sent_at:
+        time_to_open = (timestamp - campaign_contact.sent_at).total_seconds()
+        if time_to_open < prefetch_threshold_seconds:
+            logger.info("🚫 Prefetch detected (%.1fs) | threshold=%s", time_to_open, prefetch_threshold_seconds)
+            return "likely_prefetch"
+
+    # Check 2: User-Agent staleness
+    user_agent = payload.get("user_agent", "")
+    if is_stale_user_agent(user_agent):
+        logger.info("🚫 Stale browser detected | ua=%s", user_agent[:50])
+        return "likely_bot_scan"
+
+    # Check 3: Scanner patterns
+    if has_scanner_pattern(user_agent):
+        logger.info("🚫 Bot pattern detected | ua=%s", user_agent[:50])
+        return "likely_bot_scan"
+
+    return "genuine"
 
 
 class InternalEvent:
@@ -121,11 +211,14 @@ class EventProcessor:
 
             # Extract campaign_contact_id from tags (primary lookup key)
             # Tags are sent as a list; our tag is the campaign_contact_id
+            # This is especially important for open/click events where email/message-id may be unreliable
             campaign_contact_id = None
             tags = payload.get("tags")
             if tags and isinstance(tags, list) and len(tags) > 0:
                 campaign_contact_id = tags[0]
                 logger.info("  📌 Campaign contact ID from tags: %s", campaign_contact_id)
+            elif event in ["opened", "unique_opened", "click", "clicked"]:
+                logger.warning("  ⚠️  Open/click event missing tags; will require message-id fallback")
 
             logger.info("✓ STEP 1: Event normalized successfully")
 

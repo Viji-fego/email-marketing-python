@@ -13,6 +13,7 @@ class EmailEvent(Base):
     provider = Column(String(50), default="brevo")
     payload = Column(JSON, nullable=True)
     detail = Column(Text, nullable=True)
+    open_confidence = Column(String(50), nullable=True, index=True, comment="genuine | likely_prefetch | likely_bot_scan | null (non-opens)")
     created_at = Column(DateTime, default=utcnow, index=True)
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
     is_active = Column(Enum('1', '0'), default='1', nullable=False)

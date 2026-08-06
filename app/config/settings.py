@@ -28,6 +28,12 @@ class Settings:
     DEBUG: bool = os.getenv("DEBUG", "False").lower() == "true"
 
     # ============================================================================
+    # Email Tracking Configuration
+    # ============================================================================
+    OPEN_PREFETCH_THRESHOLD_SECONDS: int = int(os.getenv("OPEN_PREFETCH_THRESHOLD_SECONDS", "10"))
+    # Opens faster than this threshold are flagged as likely prefetch by mail providers
+
+    # ============================================================================
     # Database Configuration (Individual Variables - Node.js Style)
     # ============================================================================
     DB_DRIVER: str = os.getenv("DB_DRIVER", "mysql+pymysql")
