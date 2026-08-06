@@ -3,24 +3,22 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.routes import auth, campaigns, contact_lists, contacts, emails, webhooks
-from app.debug_webhook import setup_sqlalchemy_listeners, enable_sql_echo
 from app.config import engine
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.WARNING,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
+
+# Only show STEP logs from campaigns route
+logging.getLogger('app.routes.campaigns').setLevel(logging.INFO)
 
 app = FastAPI(
     title="University Outreach — Python API",
     version="0.2.0",
     root_path="/api"
 )
-
-# Enable SQLAlchemy debugging
-setup_sqlalchemy_listeners()
-enable_sql_echo(engine)
 
 app.add_middleware(
     CORSMiddleware,
