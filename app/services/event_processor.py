@@ -189,7 +189,7 @@ class EventProcessor:
                 "sent": EmailEventType.SENT,
                 "delivered": EmailEventType.DELIVERED,
                 "opened": EmailEventType.OPENED,
-                "unique_opened": EmailEventType.OPENED,  # First-time open
+                "unique_opened": EmailEventType.UNIQUE_OPENED,  # First-time open - set opened_at directly
                 "click": EmailEventType.CLICKED,
                 "hard_bounce": EmailEventType.HARD_BOUNCE,
                 "soft_bounce": EmailEventType.SOFT_BOUNCE,

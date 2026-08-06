@@ -16,6 +16,7 @@ class EmailEventType(str, Enum):
     BLOCKED = "blocked"
 
     # Engagement
+    UNIQUE_OPENED = "unique_opened"
     OPENED = "opened"
     CLICKED = "clicked"
     REPLIED = "replied"
@@ -31,7 +32,7 @@ class EmailEventType(str, Enum):
     @classmethod
     def is_engagement(cls, event_type: str) -> bool:
         """Check if event is engagement-related."""
-        return event_type in (cls.OPENED, cls.CLICKED, cls.REPLIED)
+        return event_type in (cls.UNIQUE_OPENED, cls.OPENED, cls.CLICKED, cls.REPLIED)
 
     @classmethod
     def is_bounce(cls, event_type: str) -> bool:

@@ -135,16 +135,24 @@ class TrackingService:
             if event_type == EmailEventType.DELIVERED:
                 campaign_contact.delivered_at = internal_event.timestamp
                 campaign_contact.status = DeliveryStatus.DELIVERED.value
+            elif event_type == EmailEventType.UNIQUE_OPENED:
+                # Brevo sends unique_opened for first genuine open - set it directly
+                if not campaign_contact.opened_at:
+                    campaign_contact.opened_at = internal_event.timestamp
+                    campaign_contact.status = DeliveryStatus.OPENED.value
+                    logger.info("  ✓ Unique open recorded from Brevo")
+                else:
+                    logger.info("  ℹ️  Skipping opened_at update (already opened at %s)", campaign_contact.opened_at)
             elif event_type == EmailEventType.OPENED:
-                # Only set opened_at on FIRST genuine open
+                # Raw open event - only set if classification says genuine
                 if open_confidence == "genuine" and not campaign_contact.opened_at:
                     campaign_contact.opened_at = internal_event.timestamp
                     campaign_contact.status = DeliveryStatus.OPENED.value
-                    logger.info("  ✓ First genuine open recorded")
+                    logger.info("  ✓ Genuine open recorded")
                 elif open_confidence != "genuine":
-                    logger.info("  ℹ️  Skipping opened_at update (not genuine): %s", open_confidence)
+                    logger.info("  ℹ️  Skipping opened_at (not genuine): %s", open_confidence)
                 else:
-                    logger.info("  ℹ️  Skipping opened_at update (already opened at %s)", campaign_contact.opened_at)
+                    logger.info("  ℹ️  Skipping opened_at (already opened at %s)", campaign_contact.opened_at)
             elif event_type == EmailEventType.CLICKED:
                 campaign_contact.clicked_at = internal_event.timestamp
                 campaign_contact.status = DeliveryStatus.CLICKED.value
