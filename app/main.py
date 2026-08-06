@@ -11,8 +11,12 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 
-# Only show STEP logs from campaigns route
+# Show STEP logs from all webhook components
+logging.getLogger('app.routes.webhooks').setLevel(logging.INFO)
 logging.getLogger('app.routes.campaigns').setLevel(logging.INFO)
+logging.getLogger('app.services.webhook_service').setLevel(logging.INFO)
+logging.getLogger('app.services.tracking_service').setLevel(logging.INFO)
+logging.getLogger('app.services.event_processor').setLevel(logging.INFO)
 
 app = FastAPI(
     title="University Outreach — Python API",
