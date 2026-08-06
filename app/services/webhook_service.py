@@ -38,7 +38,6 @@ class WebhookService:
             internal_event = EventProcessor.process_brevo_event(payload)
 
             if not internal_event:
-                logger.warning("Failed to normalize Brevo event")
                 return True, {"status": "ignored", "reason": "Failed to normalize event"}
 
             campaign_contact = TrackingService.find_campaign_contact(
@@ -48,21 +47,24 @@ class WebhookService:
             )
 
             if not campaign_contact:
-                logger.warning("Campaign contact not found")
                 return True, {"status": "not_found", "reason": "Campaign contact not found"}
 
             success = TrackingService.process_event(db, campaign_contact, internal_event)
 
             if success:
+                logger.info("✓ STEP 3: event=%s | contact=%s | email=%s | status=success",
+                           internal_event.event_type.value, campaign_contact.id,
+                           campaign_contact.contact.email if campaign_contact.contact else "N/A")
                 return True, {
                     "status": "success",
                     "campaign_contact_id": campaign_contact.id,
                     "event_type": internal_event.event_type.value,
                 }
+
             return True, {"status": "error", "reason": "Failed to process event"}
 
         except Exception as e:
-            logger.error("Error processing Brevo webhook: %s", e)
+            logger.error("✗ Webhook error: %s", str(e))
             return True, {"status": "error", "reason": str(e)}
 
     @staticmethod

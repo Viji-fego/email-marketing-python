@@ -50,18 +50,20 @@ class TrackingService:
             if campaign_contact_id:
                 contact = db.query(CampaignContact).filter_by(id=campaign_contact_id).first()
                 if not contact:
-                    logger.warning("Campaign contact not found by ID: %s", campaign_contact_id)
+                    logger.warning("✗ Contact not found by id=%s", campaign_contact_id)
+                    return None
                 return contact
 
             contact = db.query(CampaignContact).filter_by(
                 provider_message_id=provider_message_id
             ).first()
             if not contact:
-                logger.warning("Campaign contact not found by message_id: %s", provider_message_id)
+                logger.warning("✗ Contact not found by msgid=%s", provider_message_id)
+                return None
             return contact
 
         except SQLAlchemyError as e:
-            logger.error("Database error finding campaign_contact: %s", e)
+            logger.error("✗ Database error: %s", e)
             return None
 
     @staticmethod
@@ -171,33 +173,33 @@ class TrackingService:
             if TrackingService.check_duplicate_event(
                 db, internal_event.provider_message_id, internal_event.event_type
             ):
-                logger.info("Duplicate event ignored: %s", internal_event.event_type.value)
                 return True
 
             email_event = TrackingService.create_email_event(
                 db, campaign_contact.id, internal_event
             )
             if not email_event:
-                logger.error("Failed to create email event")
                 db.rollback()
                 return False
 
             if not TrackingService.update_campaign_contact_snapshot(
                 db, campaign_contact, internal_event
             ):
-                logger.error("Failed to update contact snapshot")
                 db.rollback()
                 return False
 
             db.commit()
-            logger.info("Event processed: contact=%s, type=%s", campaign_contact.id, internal_event.event_type.value)
+            logger.info("✓ STEP 3: type=%s | contact=%s | status=%s | sent=%s | delivered=%s | opened=%s | clicked=%s",
+                       internal_event.event_type.value, campaign_contact.id, campaign_contact.status,
+                       campaign_contact.sent_at, campaign_contact.delivered_at,
+                       campaign_contact.opened_at, campaign_contact.clicked_at)
             return True
 
         except SQLAlchemyError as e:
-            logger.error("Database transaction failed: %s", e)
+            logger.error("✗ Database error: %s", e)
             db.rollback()
             return False
         except Exception as e:
-            logger.error("Unexpected error processing event: %s", e)
+            logger.error("✗ Event processing error: %s", e)
             db.rollback()
             return False

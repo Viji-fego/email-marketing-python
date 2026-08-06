@@ -53,17 +53,20 @@ async def receive_brevo_webhook(request: Request, db: Session = Depends(get_db))
         payload = await request.json()
 
         if not payload.get("message-id"):
-            logger.warning("Brevo webhook missing message-id")
+            logger.warning("✗ Webhook validation failed: missing message-id")
             return {"status": "ignored", "reason": "Missing message-id"}
+
+        logger.info("STEP 0: event=%s | msgid=%s | email=%s | ts=%s",
+                   payload.get("event"), payload.get("message-id"), payload.get("email"), payload.get("ts_event"))
 
         success, response = WebhookService.process_brevo_webhook(db, payload)
         return response
 
     except ValueError as e:
-        logger.warning("Invalid JSON in webhook: %s", e)
+        logger.warning("✗ Invalid JSON: %s", e)
         return {"status": "error", "reason": "Invalid JSON"}
     except Exception as e:
-        logger.error("Webhook error: %s", e)
+        logger.error("✗ Webhook error: %s", e)
         return {"status": "error", "reason": "Internal server error"}
 
 
