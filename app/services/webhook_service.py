@@ -35,20 +35,12 @@ class WebhookService:
             Tuple of (success: bool, response: dict)
         """
         try:
-            # Step 1: Normalize Brevo event to internal format
             internal_event = EventProcessor.process_brevo_event(payload)
 
             if not internal_event:
-                logger.warning("Failed to process Brevo webhook payload: %s", payload)
-                return (
-                    True,  # Still return success (200 OK) to Brevo
-                    {
-                        "status": "ignored",
-                        "reason": "Failed to normalize event",
-                    },
-                )
+                logger.warning("Failed to normalize Brevo event")
+                return True, {"status": "ignored", "reason": "Failed to normalize event"}
 
-            # Step 2: Find campaign_contact (by ID tag first, then message ID fallback)
             campaign_contact = TrackingService.find_campaign_contact(
                 db,
                 provider_message_id=internal_event.provider_message_id,
@@ -56,49 +48,22 @@ class WebhookService:
             )
 
             if not campaign_contact:
-                lookup_key = internal_event.campaign_contact_id or internal_event.provider_message_id
-                logger.warning(
-                    "Campaign contact not found for lookup key: %s",
-                    lookup_key,
-                )
-                return (
-                    True,  # Still return success (200 OK) to Brevo
-                    {
-                        "status": "not_found",
-                        "reason": f"Campaign contact not found for {lookup_key}",
-                    },
-                )
+                logger.warning("Campaign contact not found")
+                return True, {"status": "not_found", "reason": "Campaign contact not found"}
 
-            # Step 3: Process event
             success = TrackingService.process_event(db, campaign_contact, internal_event)
 
             if success:
-                return (
-                    True,
-                    {
-                        "status": "success",
-                        "campaign_contact_id": campaign_contact.id,
-                        "event_type": internal_event.event_type.value,
-                    },
-                )
-            else:
-                return (
-                    True,  # Still return success (200 OK) to Brevo
-                    {
-                        "status": "error",
-                        "reason": "Failed to process event",
-                    },
-                )
+                return True, {
+                    "status": "success",
+                    "campaign_contact_id": campaign_contact.id,
+                    "event_type": internal_event.event_type.value,
+                }
+            return True, {"status": "error", "reason": "Failed to process event"}
 
         except Exception as e:
-            logger.exception("Unexpected error processing Brevo webhook: %s", e)
-            return (
-                True,  # Still return success (200 OK) to Brevo
-                {
-                    "status": "error",
-                    "reason": str(e),
-                },
-            )
+            logger.error("Error processing Brevo webhook: %s", e)
+            return True, {"status": "error", "reason": str(e)}
 
     @staticmethod
     def process_sendgrid_webhook(
@@ -115,20 +80,12 @@ class WebhookService:
             Tuple of (success: bool, response: dict)
         """
         try:
-            # Step 1: Normalize SendGrid event to internal format
             internal_event = EventProcessor.process_sendgrid_event(payload)
 
             if not internal_event:
-                logger.warning("Failed to process SendGrid webhook payload: %s", payload)
-                return (
-                    True,
-                    {
-                        "status": "ignored",
-                        "reason": "Failed to normalize event",
-                    },
-                )
+                logger.warning("Failed to normalize SendGrid event")
+                return True, {"status": "ignored", "reason": "Failed to normalize event"}
 
-            # Step 2: Find campaign_contact (by ID tag first, then message ID fallback)
             campaign_contact = TrackingService.find_campaign_contact(
                 db,
                 provider_message_id=internal_event.provider_message_id,
@@ -136,49 +93,22 @@ class WebhookService:
             )
 
             if not campaign_contact:
-                lookup_key = internal_event.campaign_contact_id or internal_event.provider_message_id
-                logger.warning(
-                    "Campaign contact not found for lookup key: %s",
-                    lookup_key,
-                )
-                return (
-                    True,
-                    {
-                        "status": "not_found",
-                        "reason": f"Campaign contact not found for {lookup_key}",
-                    },
-                )
+                logger.warning("Campaign contact not found")
+                return True, {"status": "not_found", "reason": "Campaign contact not found"}
 
-            # Step 3: Process event
             success = TrackingService.process_event(db, campaign_contact, internal_event)
 
             if success:
-                return (
-                    True,
-                    {
-                        "status": "success",
-                        "campaign_contact_id": campaign_contact.id,
-                        "event_type": internal_event.event_type.value,
-                    },
-                )
-            else:
-                return (
-                    True,
-                    {
-                        "status": "error",
-                        "reason": "Failed to process event",
-                    },
-                )
+                return True, {
+                    "status": "success",
+                    "campaign_contact_id": campaign_contact.id,
+                    "event_type": internal_event.event_type.value,
+                }
+            return True, {"status": "error", "reason": "Failed to process event"}
 
         except Exception as e:
-            logger.exception("Unexpected error processing SendGrid webhook: %s", e)
-            return (
-                True,
-                {
-                    "status": "error",
-                    "reason": str(e),
-                },
-            )
+            logger.error("Error processing SendGrid webhook: %s", e)
+            return True, {"status": "error", "reason": str(e)}
 
     @staticmethod
     def process_webhook(

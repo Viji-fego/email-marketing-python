@@ -50,67 +50,21 @@ async def receive_brevo_webhook(request: Request, db: Session = Depends(get_db))
     ```
     """
     try:
-        # Parse request body
         payload = await request.json()
 
-        # LOG: Incoming webhook payload
-        logger.info("=" * 80)
-        logger.info("BREVO WEBHOOK RECEIVED")
-        logger.info("=" * 80)
-        logger.info("Event Type: %s", payload.get("event"))
-        logger.info("Message ID: %s", payload.get("message-id"))
-        logger.info("Email: %s", payload.get("email"))
-        logger.info("Timestamp (ts_event): %s", payload.get("ts_event"))
-
-        # Log full webhook payload in JSON format
-        import json
-        logger.info("FULL WEBHOOK PAYLOAD:")
-        logger.info(json.dumps(payload, indent=2, default=str))
-        logger.info("=" * 80)
-
-        # Validate payload has required fields
         if not payload.get("message-id"):
-            logger.warning("❌ BREVO WEBHOOK - Missing message-id")
-            return {
-                "status": "ignored",
-                "reason": "Missing message-id",
-            }
+            logger.warning("Brevo webhook missing message-id")
+            return {"status": "ignored", "reason": "Missing message-id"}
 
-        # Process webhook event
-        logger.info("🔄 Processing webhook through WebhookService...")
         success, response = WebhookService.process_brevo_webhook(db, payload)
-
-        # LOG: Response
-        logger.info("=" * 80)
-        logger.info("WEBHOOK PROCESSING RESULT")
-        logger.info("=" * 80)
-        logger.info("Status: %s", response.get("status"))
-        logger.info("Event Type: %s", response.get("event_type"))
-        logger.info("Campaign Contact ID: %s", response.get("campaign_contact_id"))
-        logger.info("Reason/Error: %s", response.get("reason"))
-
-        import json
-        logger.info("FULL RESPONSE:")
-        logger.info(json.dumps(response, indent=2, default=str))
-        logger.info("=" * 80)
-
-        # Always return 200 OK (even on errors)
         return response
 
     except ValueError as e:
-        # JSON parsing error
-        logger.warning("❌ Invalid JSON in webhook request: %s", e)
-        return {
-            "status": "error",
-            "reason": "Invalid JSON",
-        }
+        logger.warning("Invalid JSON in webhook: %s", e)
+        return {"status": "error", "reason": "Invalid JSON"}
     except Exception as e:
-        # Unexpected error - still return 200 OK
-        logger.exception("❌ Unexpected error in webhook handler: %s", e)
-        return {
-            "status": "error",
-            "reason": "Internal server error",
-        }
+        logger.error("Webhook error: %s", e)
+        return {"status": "error", "reason": "Internal server error"}
 
 
 @router.post("/sendgrid")
