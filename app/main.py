@@ -5,10 +5,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.routes import auth, campaigns, contact_lists, contacts, emails, webhooks
 from app.config import engine
 
-# Configure logging
+# Configure logging to file and console
 logging.basicConfig(
     level=logging.WARNING,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('webhook_trace.log', mode='a'),
+        logging.StreamHandler()
+    ]
 )
 
 # Show STEP logs from all webhook components
