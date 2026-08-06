@@ -86,7 +86,13 @@ def classify_open_event(
 
     # Check 1: Timing (prefetch signal)
     if campaign_contact.sent_at:
-        time_to_open = (timestamp - campaign_contact.sent_at).total_seconds()
+        # Handle timezone-naive sent_at from database
+        sent_at = campaign_contact.sent_at
+        if sent_at.tzinfo is None:
+            # Convert naive datetime to UTC-aware
+            sent_at = sent_at.replace(tzinfo=timezone.utc)
+
+        time_to_open = (timestamp - sent_at).total_seconds()
         if time_to_open < prefetch_threshold_seconds:
             logger.info("🚫 Prefetch detected (%.1fs) | threshold=%s", time_to_open, prefetch_threshold_seconds)
             return "likely_prefetch"
