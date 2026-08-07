@@ -47,7 +47,7 @@ class ContactListRepository:
             )
         )
         total = query.count()
-        lists = query.offset(offset).limit(limit).all()
+        lists = query.order_by(ContactList.updated_at.desc()).offset(offset).limit(limit).all()
         return total, lists
 
     @staticmethod

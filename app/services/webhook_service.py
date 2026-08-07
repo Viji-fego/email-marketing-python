@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.services.event_processor import EventProcessor
 from app.services.tracking_service import TrackingService
+from app.models import CampaignContact
 
 logger = logging.getLogger(__name__)
 
@@ -40,28 +41,68 @@ class WebhookService:
             if not internal_event:
                 return True, {"status": "ignored", "reason": "Failed to normalize event"}
 
-            campaign_contact = TrackingService.find_campaign_contact(
-                db,
-                provider_message_id=internal_event.provider_message_id,
-                campaign_contact_id=internal_event.campaign_contact_id,
-            )
+            # Tags-first correlation for opens/clicks (email & message-id unreliable for these)
+            event_type = payload.get("event", "").lower()
+            campaign_contact = None
+
+            if event_type in ["opened", "unique_opened", "click", "clicked"]:
+                # Primary: use campaign_contact_id from tags
+                tags = payload.get("tags", [])
+                if tags and isinstance(tags, list) and len(tags) > 0:
+                    campaign_contact_id = tags[0]
+                    campaign_contact = db.query(CampaignContact).filter_by(id=campaign_contact_id).first()
+                    if campaign_contact:
+                        logger.info("✓ Correlated by tags: %s", campaign_contact_id)
+                    else:
+                        logger.warning("✗ Open/click event: contact not found by tags=%s", campaign_contact_id)
+                else:
+                    logger.warning("✗ Open/click event missing tags; attempting message-id fallback")
+                    campaign_contact = TrackingService.find_campaign_contact(
+                        db,
+                        provider_message_id=internal_event.provider_message_id,
+                        campaign_contact_id=internal_event.campaign_contact_id,
+                    )
+            else:
+                # Fallback: message-id for sent/delivered/bounce
+                campaign_contact = TrackingService.find_campaign_contact(
+                    db,
+                    provider_message_id=internal_event.provider_message_id,
+                    campaign_contact_id=internal_event.campaign_contact_id,
+                )
 
             if not campaign_contact:
                 return True, {"status": "not_found", "reason": "Campaign contact not found"}
 
+            # Classify opens before processing
+            open_confidence = None
+            event_type = payload.get("event", "").lower()
+            if event_type in ["opened", "unique_opened"]:
+                from app.services.event_processor import classify_open_event
+                from app.config.settings import settings
+                open_confidence = classify_open_event(
+                    payload,
+                    campaign_contact,
+                    prefetch_threshold_seconds=settings.OPEN_PREFETCH_THRESHOLD_SECONDS
+                )
+                logger.info("→ STEP 3: Open classified as: %s for contact=%s", open_confidence, campaign_contact.id)
+
             logger.info("→ STEP 3: Starting event processing for contact=%s", campaign_contact.id)
-            success = TrackingService.process_event(db, campaign_contact, internal_event)
+            success = TrackingService.process_event(
+                db, campaign_contact, internal_event, open_confidence=open_confidence
+            )
 
             if success:
-                logger.info("✓ STEP 3: event=%s | contact=%s | email=%s | status=success",
-                           internal_event.event_type.value, campaign_contact.id,
-                           campaign_contact.contact.email if campaign_contact.contact else "N/A")
+                logger.info("✅ Event processed | type=%s | contact=%s | confidence=%s",
+                           internal_event.event_type.value, campaign_contact.id[:8],
+                           open_confidence or "N/A")
                 return True, {
                     "status": "success",
                     "campaign_contact_id": campaign_contact.id,
                     "event_type": internal_event.event_type.value,
+                    "open_confidence": open_confidence,
                 }
 
+            logger.warning("⚠️  Event failed to process | type=%s", internal_event.event_type.value)
             return True, {"status": "error", "reason": "Failed to process event"}
 
         except Exception as e:

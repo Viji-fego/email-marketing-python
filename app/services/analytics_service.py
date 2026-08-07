@@ -52,8 +52,13 @@ class AnalyticsService:
                     "campaign_name": campaign.name,
                     "metrics": {
                         "total_sent": 0,
+                        "total_failed": 0,
                         "total_delivered": 0,
                         "total_opened": 0,
+                        "total_open_events": 0,
+                        "total_open_events_raw": 0,
+                        "prefetch_detected": 0,
+                        "bot_scan_detected": 0,
                         "total_clicked": 0,
                         "total_bounced": 0,
                         "total_blocked": 0,
@@ -76,8 +81,48 @@ class AnalyticsService:
 
             # Count by snapshot fields (latest state)
             delivered = sum(1 for cc in campaign_contacts if cc.delivered_at)
-            opened = sum(1 for cc in campaign_contacts if cc.opened_at)
+            failed = sum(1 for cc in campaign_contacts if cc.status == "failed")
+
+            # Count UNIQUE contacts who opened (those with opened_at set)
+            opened_genuine = sum(1 for cc in campaign_contacts if cc.opened_at)
+
+            # Count UNIQUE contacts who clicked (those with clicked_at set)
             clicked = sum(1 for cc in campaign_contacts if cc.clicked_at)
+
+            # Count total open/click EVENTS from email_events (for reference)
+            open_events_genuine = db.query(func.count(EmailEvent.id)).join(
+                CampaignContact,
+                EmailEvent.campaign_contact_id == CampaignContact.id,
+            ).filter(
+                EmailEvent.event_type == EmailEventType.OPENED.value,
+                EmailEvent.open_confidence == "genuine",
+                CampaignContact.campaign_id == campaign_id,
+            ).scalar() or 0
+
+            open_events_raw = db.query(func.count(EmailEvent.id)).join(
+                CampaignContact,
+                EmailEvent.campaign_contact_id == CampaignContact.id,
+            ).filter(
+                EmailEvent.event_type == EmailEventType.OPENED.value,
+                CampaignContact.campaign_id == campaign_id,
+            ).scalar() or 0
+
+            prefetch_detected = db.query(func.count(EmailEvent.id)).join(
+                CampaignContact,
+                EmailEvent.campaign_contact_id == CampaignContact.id,
+            ).filter(
+                EmailEvent.open_confidence == "likely_prefetch",
+                CampaignContact.campaign_id == campaign_id,
+            ).scalar() or 0
+
+            bot_scan_detected = db.query(func.count(EmailEvent.id)).join(
+                CampaignContact,
+                EmailEvent.campaign_contact_id == CampaignContact.id,
+            ).filter(
+                EmailEvent.open_confidence == "likely_bot_scan",
+                CampaignContact.campaign_id == campaign_id,
+            ).scalar() or 0
+
             bounced = sum(
                 1
                 for cc in campaign_contacts
@@ -97,12 +142,12 @@ class AnalyticsService:
                 CampaignContact.campaign_id == campaign_id,
             ).scalar() or 0
 
-            # Calculate rates. All rates use `total` as the 100% baseline so
-            # none of them can exceed 100% — e.g. clients that block the
-            # open-tracking pixel but still follow a link would otherwise
-            # push click-based rates past 100%.
+            # Calculate rates (using unique, bot/prefetch-filtered counts).
+            # All rates use `total` as the 100% baseline so none of them can
+            # exceed 100% — e.g. a click event arriving without a matching
+            # genuine-open event would otherwise push click_rate past 100%.
             delivery_rate = (delivered / total * 100) if total > 0 else 0.0
-            open_rate = (opened / total * 100) if total > 0 else 0.0
+            open_rate = (opened_genuine / total * 100) if total > 0 else 0.0
             click_rate = (clicked / total * 100) if total > 0 else 0.0
             ctr = (clicked / total * 100) if total > 0 else 0.0
             bounce_rate = (bounced / total * 100) if total > 0 else 0.0
@@ -115,8 +160,13 @@ class AnalyticsService:
                 "campaign_name": campaign.name,
                 "metrics": {
                     "total_sent": total,
+                    "total_failed": failed,
                     "total_delivered": delivered,
-                    "total_opened": opened,
+                    "total_opened": opened_genuine,
+                    "total_open_events": open_events_genuine,
+                    "total_open_events_raw": open_events_raw,
+                    "prefetch_detected": prefetch_detected,
+                    "bot_scan_detected": bot_scan_detected,
                     "total_clicked": clicked,
                     "total_bounced": bounced,
                     "total_blocked": sum(

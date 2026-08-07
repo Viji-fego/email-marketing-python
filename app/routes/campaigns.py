@@ -86,8 +86,9 @@ def list_campaigns(
             "contactListName": campaign.contact_list.name if campaign.contact_list else None,
             "contactCount": len(contacts),
             "sentCount": sum(1 for c in contacts if c.status == "sent"),
-            "openedCount": sum(1 for c in contacts if c.opened_at),
-            "clickedCount": sum(1 for c in contacts if c.clicked_at),
+            "failedCount": sum(1 for c in contacts if c.status == "failed"),
+            "unique_opened": sum(1 for c in contacts if c.opened_at),
+            "unique_clicked": sum(1 for c in contacts if c.clicked_at),
             "unsubscribedCount": sum(1 for c in contacts if c.status == "unsubscribed"),
             "createdAt": iso_utc(campaign.created_at),
         })
