@@ -97,15 +97,18 @@ class AnalyticsService:
                 CampaignContact.campaign_id == campaign_id,
             ).scalar() or 0
 
-            # Calculate rates
+            # Calculate rates. All rates use `total` as the 100% baseline so
+            # none of them can exceed 100% — e.g. clients that block the
+            # open-tracking pixel but still follow a link would otherwise
+            # push click-based rates past 100%.
             delivery_rate = (delivered / total * 100) if total > 0 else 0.0
-            open_rate = (opened / delivered * 100) if delivered > 0 else 0.0
-            click_rate = (clicked / opened * 100) if opened > 0 else 0.0
-            ctr = (clicked / delivered * 100) if delivered > 0 else 0.0
+            open_rate = (opened / total * 100) if total > 0 else 0.0
+            click_rate = (clicked / total * 100) if total > 0 else 0.0
+            ctr = (clicked / total * 100) if total > 0 else 0.0
             bounce_rate = (bounced / total * 100) if total > 0 else 0.0
             complaint_rate = (complained / total * 100) if total > 0 else 0.0
             unsubscribe_rate = (unsubscribed / total * 100) if total > 0 else 0.0
-            reply_rate = (replied / opened * 100) if opened > 0 else 0.0
+            reply_rate = (replied / total * 100) if total > 0 else 0.0
 
             return {
                 "campaign_id": campaign_id,
