@@ -276,7 +276,9 @@ def get_campaign_analytics(
     - Engagement metrics (open rate, click rate, CTR)
     """
     try:
-        CampaignService.get_campaign(db, campaign_id, current_user.id)
+        campaign = CampaignService.get_campaign(db, campaign_id, current_user.id)
+        if not campaign:
+            raise ValueError("Campaign not found.")
         return AnalyticsService.get_campaign_analytics(db, campaign_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
@@ -296,7 +298,23 @@ def get_campaign_events(
     Shows count of each event type (sent, delivered, opened, clicked, etc.).
     """
     try:
-        CampaignService.get_campaign(db, campaign_id, current_user.id)
+        campaign = CampaignService.get_campaign(db, campaign_id, current_user.id)
+        if not campaign:
+            raise ValueError("Campaign not found.")
         return AnalyticsService.get_event_breakdown(db, campaign_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@router.delete("/{campaign_id}")
+def delete_campaign(
+    campaign_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Soft delete a campaign."""
+    try:
+        CampaignService.soft_delete_campaign(db, campaign_id, current_user.id)
+        return {"success": True, "message": "Campaign deleted."}
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))

@@ -26,8 +26,8 @@ class CampaignService:
 
     @staticmethod
     def list_campaigns(db: Session, user_id: str, page: int = 1, page_size: int = 10, search: str = ""):
-        """List campaigns for a user."""
-        query = db.query(Campaign).filter(Campaign.user_id == user_id)
+        """List active campaigns for a user."""
+        query = db.query(Campaign).filter(Campaign.user_id == user_id, Campaign.is_active == '1')
         if search:
             query = query.filter(Campaign.name.ilike(f"%{search}%"))
 
@@ -62,10 +62,11 @@ class CampaignService:
 
     @staticmethod
     def get_campaign_with_contacts(db: Session, campaign_id: str, user_id: str):
-        """Get campaign with all enrolled contacts."""
+        """Get active campaign with all enrolled contacts."""
         campaign = db.query(Campaign).filter(
             Campaign.id == campaign_id,
-            Campaign.user_id == user_id
+            Campaign.user_id == user_id,
+            Campaign.is_active == '1'
         ).first()
         if not campaign:
             raise ValueError("Campaign not found.")
@@ -160,9 +161,12 @@ class CampaignService:
         return campaign
 
     @staticmethod
-    def get_campaign(db: Session, campaign_id: str) -> Optional[Campaign]:
-        """Get a campaign by ID (internal use only, no user check)."""
-        return db.query(Campaign).filter(Campaign.id == campaign_id).first()
+    def get_campaign(db: Session, campaign_id: str, user_id: Optional[str] = None) -> Optional[Campaign]:
+        """Get a campaign by ID. If user_id is provided, checks ownership."""
+        query = db.query(Campaign).filter(Campaign.id == campaign_id)
+        if user_id:
+            query = query.filter(Campaign.user_id == user_id)
+        return query.first()
 
     @staticmethod
     def update_campaign_contact_list(db: Session, campaign: Campaign, contact_list_id: str) -> Campaign:
@@ -171,6 +175,22 @@ class CampaignService:
         db.commit()
         db.refresh(campaign)
         logger.info(f"Updated campaign {campaign.id} with contact list {contact_list_id}")
+        return campaign
+
+    @staticmethod
+    def soft_delete_campaign(db: Session, campaign_id: str, user_id: str) -> Campaign:
+        """Soft delete a campaign (set is_active to '0')."""
+        campaign = db.query(Campaign).filter(
+            Campaign.id == campaign_id,
+            Campaign.user_id == user_id
+        ).first()
+        if not campaign:
+            raise ValueError("Campaign not found.")
+
+        campaign.is_active = '0'
+        db.commit()
+        db.refresh(campaign)
+        logger.info(f"Soft deleted campaign: {campaign.id}")
         return campaign
 
     @staticmethod
