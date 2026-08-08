@@ -8,6 +8,7 @@ class Campaign(Base):
     __tablename__ = "campaigns"
 
     id = Column(String(36), primary_key=True, default=gen_uuid)
+    user_id = Column(String(36), ForeignKey("users.id"), nullable=False, index=True)
     name = Column(String(255), nullable=False)
     status = Column(String(50), default="draft")
     contact_list_id = Column(String(36), ForeignKey("contact_lists.id"), nullable=True, index=True)
@@ -16,3 +17,4 @@ class Campaign(Base):
     is_active = Column(Enum('1', '0'), default='1', nullable=False)
 
     contact_list = relationship("ContactList")
+    user = relationship("User")

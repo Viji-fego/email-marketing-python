@@ -15,9 +15,9 @@ class CampaignService:
     """Service layer for Campaign operations."""
 
     @staticmethod
-    def create_campaign(db: Session, name: str, contact_list_id: Optional[str] = None) -> Campaign:
+    def create_campaign(db: Session, user_id: str, name: str, contact_list_id: Optional[str] = None) -> Campaign:
         """Create a new campaign."""
-        campaign = Campaign(name=name, contact_list_id=contact_list_id, status="draft")
+        campaign = Campaign(user_id=user_id, name=name, contact_list_id=contact_list_id, status="draft")
         db.add(campaign)
         db.commit()
         db.refresh(campaign)
@@ -25,13 +25,134 @@ class CampaignService:
         return campaign
 
     @staticmethod
-    def get_campaign(db: Session, campaign_id: str) -> Optional[Campaign]:
-        """Get a campaign by ID."""
-        return db.query(Campaign).filter(Campaign.id == campaign_id).first()
+    def list_campaigns(db: Session, user_id: str, page: int = 1, page_size: int = 10, search: str = ""):
+        """List campaigns for a user."""
+        query = db.query(Campaign).filter(Campaign.user_id == user_id)
+        if search:
+            query = query.filter(Campaign.name.ilike(f"%{search}%"))
+
+        total = query.count()
+        campaigns = (
+            query.order_by(Campaign.created_at.desc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+            .all()
+        )
+
+        items = []
+        for campaign in campaigns:
+            contacts = db.query(CampaignContact).filter_by(campaign_id=campaign.id).all()
+            items.append({
+                "id": campaign.id,
+                "name": campaign.name,
+                "status": campaign.status,
+                "contactListId": campaign.contact_list_id,
+                "contactListName": campaign.contact_list.name if campaign.contact_list else None,
+                "contactCount": len(contacts),
+                "sentCount": sum(1 for c in contacts if c.status == "sent"),
+                "failedCount": sum(1 for c in contacts if c.status == "failed"),
+                "unique_opened": sum(1 for c in contacts if c.opened_at),
+                "unique_clicked": sum(1 for c in contacts if c.clicked_at),
+                "unsubscribedCount": sum(1 for c in contacts if c.status == "unsubscribed"),
+                "createdAt": campaign.created_at.isoformat(),
+            })
+
+        pages = (total + page_size - 1) // page_size if page_size else 0
+        return {"items": items, "total": total, "page": page, "page_size": page_size, "pages": pages}
 
     @staticmethod
-    def update_campaign_contact_list(db: Session, campaign: Campaign, contact_list_id: str) -> Campaign:
-        """Update campaign's contact list selection."""
+    def get_campaign_with_contacts(db: Session, campaign_id: str, user_id: str):
+        """Get campaign with all enrolled contacts."""
+        campaign = db.query(Campaign).filter(
+            Campaign.id == campaign_id,
+            Campaign.user_id == user_id
+        ).first()
+        if not campaign:
+            raise ValueError("Campaign not found.")
+
+        campaign_contacts = db.query(CampaignContact).filter_by(campaign_id=campaign_id).all()
+        contacts = []
+        for cc in campaign_contacts:
+            contact = db.get(Contact, cc.contact_id)
+            if not contact:
+                continue
+            contacts.append({
+                "id": contact.id,
+                "name": contact.name,
+                "email": contact.email,
+                "university": contact.university,
+                "status": cc.status,
+                "sentAt": cc.sent_at.isoformat() if cc.sent_at else None,
+                "openedAt": cc.opened_at.isoformat() if cc.opened_at else None,
+                "clickedAt": cc.clicked_at.isoformat() if cc.clicked_at else None,
+            })
+
+        return {
+            "id": campaign.id,
+            "name": campaign.name,
+            "status": campaign.status,
+            "contactListId": campaign.contact_list_id,
+            "contactListName": campaign.contact_list.name if campaign.contact_list else None,
+            "contactCount": len(contacts),
+            "sentCount": sum(1 for c in contacts if c["status"] == "sent"),
+            "createdAt": campaign.created_at.isoformat(),
+            "contacts": contacts,
+        }
+
+    @staticmethod
+    def enroll_contacts(db: Session, campaign_id: str, user_id: str, contact_ids: List[str]):
+        """Enroll contacts in a campaign."""
+        campaign = db.query(Campaign).filter(
+            Campaign.id == campaign_id,
+            Campaign.user_id == user_id
+        ).first()
+        if not campaign:
+            raise ValueError("Campaign not found.")
+
+        results = []
+        for contact_id in contact_ids:
+            contact = db.query(Contact).filter(
+                Contact.id == contact_id,
+                Contact.user_id == user_id
+            ).first()
+            if not contact:
+                continue
+            existing = (
+                db.query(CampaignContact)
+                .filter_by(campaign_id=campaign_id, contact_id=contact_id)
+                .first()
+            )
+            cc = existing or CampaignContact(campaign_id=campaign_id, contact_id=contact_id)
+            if not existing:
+                db.add(cc)
+            results.append(cc)
+
+        db.commit()
+        for cc in results:
+            db.refresh(cc)
+
+        return {
+            "enrolled": len(results),
+            "campaignContacts": [{"id": cc.id, "contactId": cc.contact_id, "status": cc.status} for cc in results],
+        }
+
+    @staticmethod
+    def select_contact_list(db: Session, campaign_id: str, user_id: str, contact_list_id: str):
+        """Select a contact list for the campaign."""
+        campaign = db.query(Campaign).filter(
+            Campaign.id == campaign_id,
+            Campaign.user_id == user_id
+        ).first()
+        if not campaign:
+            raise ValueError("Campaign not found.")
+
+        contact_list = db.query(ContactList).filter(
+            ContactList.id == contact_list_id,
+            ContactList.user_id == user_id
+        ).first()
+        if not contact_list:
+            raise ValueError("Contact list not found.")
+
         campaign.contact_list_id = contact_list_id
         db.commit()
         db.refresh(campaign)
@@ -39,7 +160,21 @@ class CampaignService:
         return campaign
 
     @staticmethod
-    def run_campaign(db: Session, campaign: Campaign, subject: str, body_html: str,
+    def get_campaign(db: Session, campaign_id: str) -> Optional[Campaign]:
+        """Get a campaign by ID (internal use only, no user check)."""
+        return db.query(Campaign).filter(Campaign.id == campaign_id).first()
+
+    @staticmethod
+    def update_campaign_contact_list(db: Session, campaign: Campaign, contact_list_id: str) -> Campaign:
+        """Update campaign's contact list selection (internal use only)."""
+        campaign.contact_list_id = contact_list_id
+        db.commit()
+        db.refresh(campaign)
+        logger.info(f"Updated campaign {campaign.id} with contact list {contact_list_id}")
+        return campaign
+
+    @staticmethod
+    def run_campaign(db: Session, campaign_id: str, user_id: str, subject: str, body_html: str,
                      body_text: Optional[str] = None, cta_text: Optional[str] = None,
                      cta_url: Optional[str] = None) -> dict:
         """
@@ -47,6 +182,13 @@ class CampaignService:
 
         Returns statistics about the campaign run.
         """
+        campaign = db.query(Campaign).filter(
+            Campaign.id == campaign_id,
+            Campaign.user_id == user_id
+        ).first()
+        if not campaign:
+            raise ValueError("Campaign not found.")
+
         if not campaign.contact_list_id:
             raise ValueError("Campaign does not have a contact list selected.")
 

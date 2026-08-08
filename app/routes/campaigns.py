@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime, timezone
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
@@ -7,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings, get_db
 from app.deps import get_current_user
-from app.models import Campaign, CampaignContact, Contact, EmailEvent, User
+from app.models import Campaign, CampaignContact, Contact, ContactList, EmailEvent, User
 from app.models.base import iso_utc
 from app.services.brevo_service import send_email
 from app.services.excel_service import extract_contacts_from_excel
@@ -44,7 +45,7 @@ def create_campaign(
     current_user: User = Depends(get_current_user),
 ):
     """Create a new campaign with optional contact list selection."""
-    campaign = CampaignService.create_campaign(db, body.name, body.contact_list_id)
+    campaign = CampaignService.create_campaign(db, current_user.id, body.name, body.contact_list_id)
     return {
         "id": campaign.id,
         "name": campaign.name,
@@ -63,38 +64,7 @@ def list_campaigns(
     current_user: User = Depends(get_current_user),
 ):
     """List campaigns with recipient/open/click/unsubscribe counts for the card list UI."""
-    query = db.query(Campaign)
-    if search:
-        query = query.filter(Campaign.name.ilike(f"%{search}%"))
-
-    total = query.count()
-    campaigns = (
-        query.order_by(Campaign.created_at.desc())
-        .offset((page - 1) * page_size)
-        .limit(page_size)
-        .all()
-    )
-
-    items = []
-    for campaign in campaigns:
-        contacts = db.query(CampaignContact).filter_by(campaign_id=campaign.id).all()
-        items.append({
-            "id": campaign.id,
-            "name": campaign.name,
-            "status": campaign.status,
-            "contactListId": campaign.contact_list_id,
-            "contactListName": campaign.contact_list.name if campaign.contact_list else None,
-            "contactCount": len(contacts),
-            "sentCount": sum(1 for c in contacts if c.status == "sent"),
-            "failedCount": sum(1 for c in contacts if c.status == "failed"),
-            "unique_opened": sum(1 for c in contacts if c.opened_at),
-            "unique_clicked": sum(1 for c in contacts if c.clicked_at),
-            "unsubscribedCount": sum(1 for c in contacts if c.status == "unsubscribed"),
-            "createdAt": iso_utc(campaign.created_at),
-        })
-
-    pages = (total + page_size - 1) // page_size if page_size else 0
-    return {"items": items, "total": total, "page": page, "page_size": page_size, "pages": pages}
+    return CampaignService.list_campaigns(db, current_user.id, page, page_size, search)
 
 
 @router.get("/{campaign_id}")
@@ -104,38 +74,10 @@ def get_campaign(
     current_user: User = Depends(get_current_user),
 ):
     """Campaign detail: summary + the full list of enrolled contacts with their delivery status."""
-    campaign = db.get(Campaign, campaign_id)
-    if not campaign:
-        raise HTTPException(status_code=404, detail="Campaign not found.")
-
-    campaign_contacts = db.query(CampaignContact).filter_by(campaign_id=campaign_id).all()
-    contacts = []
-    for cc in campaign_contacts:
-        contact = db.get(Contact, cc.contact_id)
-        if not contact:
-            continue
-        contacts.append({
-            "id": contact.id,
-            "name": contact.name,
-            "email": contact.email,
-            "university": contact.university,
-            "status": cc.status,
-            "sentAt": iso_utc(cc.sent_at),
-            "openedAt": iso_utc(cc.opened_at),
-            "clickedAt": iso_utc(cc.clicked_at),
-        })
-
-    return {
-        "id": campaign.id,
-        "name": campaign.name,
-        "status": campaign.status,
-        "contactListId": campaign.contact_list_id,
-        "contactListName": campaign.contact_list.name if campaign.contact_list else None,
-        "contactCount": len(contacts),
-        "sentCount": sum(1 for c in contacts if c["status"] == "sent"),
-        "createdAt": iso_utc(campaign.created_at),
-        "contacts": contacts,
-    }
+    try:
+        return CampaignService.get_campaign_with_contacts(db, campaign_id, current_user.id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
 
 
 class EnrollRequest(BaseModel):
@@ -149,33 +91,10 @@ def enroll_contacts(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    campaign = db.get(Campaign, campaign_id)
-    if not campaign:
-        raise HTTPException(status_code=404, detail="Campaign not found.")
-
-    results = []
-    for contact_id in body.contactIds:
-        contact = db.get(Contact, contact_id)
-        if not contact:
-            continue
-        existing = (
-            db.query(CampaignContact)
-            .filter_by(campaign_id=campaign_id, contact_id=contact_id)
-            .first()
-        )
-        cc = existing or CampaignContact(campaign_id=campaign_id, contact_id=contact_id)
-        if not existing:
-            db.add(cc)
-        results.append(cc)
-
-    db.commit()
-    for cc in results:
-        db.refresh(cc)
-
-    return {
-        "enrolled": len(results),
-        "campaignContacts": [{"id": cc.id, "contactId": cc.contact_id, "status": cc.status} for cc in results],
-    }
+    try:
+        return CampaignService.enroll_contacts(db, campaign_id, current_user.id, body.contactIds)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
 
 
 @router.put("/{campaign_id}/select-contact-list")
@@ -186,18 +105,17 @@ def select_contact_list(
     current_user: User = Depends(get_current_user),
 ):
     """Select a contact list for the campaign."""
-    campaign = CampaignService.get_campaign(db, campaign_id)
-    if not campaign:
-        raise HTTPException(status_code=404, detail="Campaign not found.")
-
-    campaign = CampaignService.update_campaign_contact_list(db, campaign, body.contact_list_id)
-    return {
-        "id": campaign.id,
-        "name": campaign.name,
-        "status": campaign.status,
-        "contactListId": campaign.contact_list_id,
-        "message": "Contact list selected for campaign.",
-    }
+    try:
+        campaign = CampaignService.select_contact_list(db, campaign_id, current_user.id, body.contact_list_id)
+        return {
+            "id": campaign.id,
+            "name": campaign.name,
+            "status": campaign.status,
+            "contactListId": campaign.contact_list_id,
+            "message": "Contact list selected for campaign.",
+        }
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
 
 
 @router.post("/{campaign_id}/run")
@@ -210,22 +128,15 @@ def run_campaign(
     """Run a campaign: send emails to all contacts in the selected contact list."""
     _require_brevo_configured()
 
-    campaign = CampaignService.get_campaign(db, campaign_id)
-    if not campaign:
-        logger.error(f"STEP 2: Campaign Retrieval - Campaign {campaign_id} not found")
-        raise HTTPException(status_code=404, detail="Campaign not found.")
-    logger.info(f"STEP 2: Campaign Retrieval - Campaign {campaign_id} retrieved successfully")
-
     try:
-        result = CampaignService.run_campaign(
-            db, campaign,
+        return CampaignService.run_campaign(
+            db, campaign_id, current_user.id,
             subject=body.subject,
             body_html=body.bodyHtml,
             body_text=body.bodyText,
             cta_text=body.ctaText,
             cta_url=body.ctaUrl,
         )
-        return result
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:
@@ -274,7 +185,7 @@ async def send_from_excel(
     if not rows:
         raise HTTPException(status_code=400, detail="No valid email addresses found in the uploaded file.")
 
-    campaign = Campaign(name=campaign_name)
+    campaign = Campaign(name=campaign_name, user_id=current_user.id)
     db.add(campaign)
     db.commit()
     db.refresh(campaign)
@@ -282,12 +193,20 @@ async def send_from_excel(
     sent, failed = [], []
 
     for row in rows:
-        contact = db.query(Contact).filter(Contact.email == row["email"]).first()
+        contact = db.query(Contact).filter(
+            Contact.email == row["email"],
+            Contact.user_id == current_user.id
+        ).first()
         if contact:
             contact.name = row["name"] or contact.name
             contact.university = row["university"] or contact.university
         else:
-            contact = Contact(name=row["name"], email=row["email"], university=row["university"])
+            contact = Contact(
+                name=row["name"],
+                email=row["email"],
+                university=row["university"],
+                user_id=current_user.id
+            )
             db.add(contact)
         db.commit()
         db.refresh(contact)
@@ -311,7 +230,7 @@ async def send_from_excel(
             # Store message ID for webhook tracking
             campaign_contact.provider_message_id = message_id
             campaign_contact.status = "sent"
-            campaign_contact.sent_at = __import__("datetime").datetime.now(__import__("datetime").timezone.utc)
+            campaign_contact.sent_at = datetime.now(timezone.utc)
 
             # Log event
             db.add(EmailEvent(
@@ -356,7 +275,11 @@ def get_campaign_analytics(
     - Bounce rates, complaint rates, unsubscribe rates
     - Engagement metrics (open rate, click rate, CTR)
     """
-    return AnalyticsService.get_campaign_analytics(db, campaign_id)
+    try:
+        CampaignService.get_campaign(db, campaign_id, current_user.id)
+        return AnalyticsService.get_campaign_analytics(db, campaign_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
 
 
 @router.get("/{campaign_id}/events")
@@ -372,4 +295,8 @@ def get_campaign_events(
 
     Shows count of each event type (sent, delivered, opened, clicked, etc.).
     """
-    return AnalyticsService.get_event_breakdown(db, campaign_id)
+    try:
+        CampaignService.get_campaign(db, campaign_id, current_user.id)
+        return AnalyticsService.get_event_breakdown(db, campaign_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))

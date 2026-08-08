@@ -143,7 +143,7 @@ async def import_contacts(
     file_bytes = await file.read()
 
     try:
-        result = ContactListService.import_contacts_from_excel(db, list_id, file_bytes)
+        result = ContactListService.import_contacts_from_excel(db, list_id, current_user.id, file_bytes)
         return result
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))

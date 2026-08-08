@@ -22,7 +22,7 @@ def list_contacts(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    query = db.query(Contact)
+    query = db.query(Contact).filter(Contact.user_id == current_user.id)
     if search:
         query = query.filter(
             (Contact.email.ilike(f"%{search}%")) | (Contact.name.ilike(f"%{search}%"))
@@ -63,7 +63,10 @@ def get_contact(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    contact = db.get(Contact, contact_id)
+    contact = db.query(Contact).filter(
+        Contact.id == contact_id,
+        Contact.user_id == current_user.id
+    ).first()
     if not contact:
         raise HTTPException(status_code=404, detail="Contact not found.")
 
@@ -115,12 +118,20 @@ async def import_contacts_excel(
 
     imported: List[Contact] = []
     for row in rows:
-        contact = db.query(Contact).filter(Contact.email == row["email"]).first()
+        contact = db.query(Contact).filter(
+            Contact.email == row["email"],
+            Contact.user_id == current_user.id
+        ).first()
         if contact:
             contact.name = row["name"] or contact.name
             contact.university = row["university"] or contact.university
         else:
-            contact = Contact(name=row["name"], email=row["email"], university=row["university"])
+            contact = Contact(
+                name=row["name"],
+                email=row["email"],
+                university=row["university"],
+                user_id=current_user.id
+            )
             db.add(contact)
         imported.append(contact)
 
@@ -157,13 +168,21 @@ def import_contacts(
     imported: List[Contact] = []
 
     for incoming in body.contacts:
-        existing = db.query(Contact).filter(Contact.email == incoming.email).first()
+        existing = db.query(Contact).filter(
+            Contact.email == incoming.email,
+            Contact.user_id == current_user.id
+        ).first()
         if existing:
             existing.name = incoming.name or existing.name
             existing.university = incoming.university or existing.university
             imported.append(existing)
         else:
-            contact = Contact(name=incoming.name, email=incoming.email, university=incoming.university)
+            contact = Contact(
+                name=incoming.name,
+                email=incoming.email,
+                university=incoming.university,
+                user_id=current_user.id
+            )
             db.add(contact)
             imported.append(contact)
 

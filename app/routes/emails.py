@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings, get_db
 from app.deps import get_current_user
-from app.models import CampaignContact, EmailEvent, User
+from app.models import Campaign, CampaignContact, EmailEvent, User
 from app.services.brevo_service import send_email
 from app.enums import EmailEventType
 
@@ -41,9 +41,18 @@ def send_email_route(
 
     campaign_contact = None
     if body.campaignContactId:
-        campaign_contact = db.get(CampaignContact, body.campaignContactId)
+        campaign_contact = db.query(CampaignContact).filter(
+            CampaignContact.id == body.campaignContactId
+        ).first()
         if not campaign_contact:
             raise HTTPException(status_code=404, detail="campaignContactId not found.")
+
+        campaign = db.query(Campaign).filter(
+            Campaign.id == campaign_contact.campaign_id,
+            Campaign.user_id == current_user.id
+        ).first()
+        if not campaign:
+            raise HTTPException(status_code=403, detail="Unauthorized access to campaign.")
 
     try:
         # Send email and capture message ID for tracking

@@ -219,10 +219,10 @@ class ContactListRepository:
         return count
 
     @staticmethod
-    def get_or_create_contact(db: Session, email: str, name: Optional[str] = None,
+    def get_or_create_contact(db: Session, email: str, user_id: str, name: Optional[str] = None,
                              university: Optional[str] = None) -> Contact:
         """Get existing contact or create a new one."""
-        contact = db.query(Contact).filter(Contact.email == email).first()
+        contact = db.query(Contact).filter(Contact.email == email, Contact.user_id == user_id).first()
 
         if contact:
             if name and not contact.name:
@@ -233,7 +233,7 @@ class ContactListRepository:
             db.refresh(contact)
             return contact
 
-        contact = Contact(email=email, name=name, university=university)
+        contact = Contact(email=email, user_id=user_id, name=name, university=university)
         db.add(contact)
         db.commit()
         db.refresh(contact)

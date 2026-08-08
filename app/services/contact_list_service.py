@@ -40,7 +40,7 @@ class ContactListService:
         return ContactListRepository.soft_delete(db, contact_list)
 
     @staticmethod
-    def import_contacts_from_excel(db: Session, list_id: str, file_bytes: bytes) -> ImportContactsResponse:
+    def import_contacts_from_excel(db: Session, list_id: str, user_id: str, file_bytes: bytes) -> ImportContactsResponse:
         """Import contacts from Excel file into a contact list."""
         try:
             rows = extract_contacts_from_excel(file_bytes)
@@ -63,6 +63,7 @@ class ContactListService:
                 contact = ContactListRepository.get_or_create_contact(
                     db,
                     email=row["email"],
+                    user_id=user_id,
                     name=row.get("name"),
                     university=row.get("university")
                 )
